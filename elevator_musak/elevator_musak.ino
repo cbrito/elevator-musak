@@ -12,7 +12,7 @@
 
 // Teensy
 #define LED_PIN 11
-#define SERIAL_PORT Serial1
+#define DF_PLAYER_SERIAL_PORT Serial1
 // SCL Wire Port on 2.0 is 5
 // SDA Wire Port on 2.0 is 6
 // UART RX Port on 2.0 is 7
@@ -20,65 +20,53 @@
 
 #define ACC_SENSOR_I2C_ADDRESS 0x18
 
+#define MOVEMENT_DELTA_TRIGGER 4 // Determines what percent movement triggers the board.
+
 DFRobotDFPlayerMini myDFPlayer;
 Adafruit_LIS3DH accSensor = Adafruit_LIS3DH(); // Sensor I2C Comm
 void printDetail(uint8_t type, int value);
+
+bool boardIsAlreadyMoving = false;
 
 void setup()
 {
   pinMode(LED_PIN, OUTPUT);
 
   // Prep the Serial ports for device and USB console
-  SERIAL_PORT.begin(9600);
+  DF_PLAYER_SERIAL_PORT.begin(9600);
   Serial.begin(9600);
 
   delay(1500); // Allow some time for things to settle, especially at first boot.
 
+  digitalWrite(LED_PIN, HIGH); // Indicate setup starting
   setupAccSensor();
-
-  randomSeed(analogRead(0)); // Otherwise you see to get 7,9,3,8,0,2...
-  
-  Serial.println(F(""));
-  Serial.println(F("DFPlayer Mini Start-up"));
-  Serial.println(F("Initializing DFPlayer... "));
-  digitalWrite(LED_PIN, HIGH); 
-
-//  int status = myDFPlayer.begin(SERIAL_PORT);
-  
-  if (!myDFPlayer.begin(SERIAL_PORT)) {  
-    Serial.println(F("Error - unable to start:"));
-    Serial.println(F("Check the connection!"));
-    Serial.println(F("Check SD card!"));
-    while(true){
-      // Flash the LED as an error indicator
-      flashError();
-      // TO DO: Need to find someway to reset / recover from here after some delay.
-    }
-  }
-  Serial.println(F("DFPlayer Mini Online"));
+  setupDfplayer();
   digitalWrite(LED_PIN, LOW); 
-
-  myDFPlayer.volume(20); // Set initial volume
-
 }
 
 void loop()
 {
   
-  if (checkIfBoardMoved()) {
+  if (checkIfBoardMoved() && boardIsAlreadyMoving == false) {
+    boardIsAlreadyMoving = true;
     digitalWrite(LED_PIN, HIGH); 
     playMusic();
-    delay(10000);
-    digitalWrite(LED_PIN, LOW);
-    myDFPlayer.stop();
-    delay(5000);
+  }
+  else if(boardIsAlreadyMoving == true && checkIfBoardMoved()) {
+    Serial.println("BOARD IS ALREADY MOVING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    // do nothing
   }
   else {
-    delay(30000); // Put in some delay so it does not just keep looping to a random number...
+    delay(250); // Give a lil time to finish song?
+    boardIsAlreadyMoving = false;
+    digitalWrite(LED_PIN, LOW);
+    myDFPlayer.stop();
   }
-  
+
+  delay(250); // Slight delay so it's not constantly running
+
+  // Print any errors that might arise:
   if (myDFPlayer.available()) {
-    //Print the detail message from DFPlayer to handle different errors and states.
     printDetail(myDFPlayer.readType(), myDFPlayer.read()); 
     flashError();
   }
@@ -93,12 +81,35 @@ void flashError(){
 
 void setupAccSensor(){
   if (! accSensor.begin(ACC_SENSOR_I2C_ADDRESS)) {   
-    Serial.println("Couldnt start");
-    while (1);
+    Serial.println("Couldnt start LIS3DH sensor");
+     // Flash the LED as an error indicator
+     flashError();
+    while (1); // halt... for now...
   }
   Serial.println("LIS3DH sensor found!");
   
-  accSensor.setRange(LIS3DH_RANGE_4_G);   // 2, 4, 8 or 16 G!
+  accSensor.setRange(LIS3DH_RANGE_4_G);   // 2, 4, 8 or 16 G
+}
+
+void setupDfplayer(){
+
+  Serial.println(F("DFPlayer Mini Start-up"));
+  Serial.println(F("Initializing DFPlayer... "));
+
+  if (!myDFPlayer.begin(DF_PLAYER_SERIAL_PORT)) {  
+    Serial.println(F("Error - unable to start:"));
+    Serial.println(F("Check the connection!"));
+    Serial.println(F("Check SD card!"));
+    while(true){
+      // Flash the LED as an error indicator
+      flashError();
+      // TO DO: Need to find someway to reset / recover from here after some delay.
+    }
+  }
+  Serial.println(F("DFPlayer Mini Online"));
+
+  myDFPlayer.volume(20); // Set initial volume
+
 }
 
 void playMusic(){
@@ -121,35 +132,35 @@ void playMusic(){
 bool checkIfBoardMoved() {
   Serial.println(F("Checking if the board has moved."));
 
-  getAccSensorMeasurements();
+  float accl1 = getAccelerometerZAxisAcceleration();
+  delay(100);
+  float accl2 = getAccelerometerZAxisAcceleration();
+  float acclDeltaPct;
+  
+  Serial.print("Z-axis acceleration 1: "); Serial.print(accl1); 
+  Serial.println();
+  Serial.print("Z-axis acceleration 2: "); Serial.print(accl2); 
+  Serial.println();
+  acclDeltaPct = abs(1 - (accl2 - accl1)/(accl1) * 100);
+  Serial.print("Delta: "); Serial.print(acclDeltaPct); Serial.print(" %"); 
+  Serial.println();
 
-  int randNum = random(10); // Roll a die!
-  Serial.print("Rolled a: ");
-  Serial.println(randNum);
-
-  if(randNum % 2 == 0){
-    // Number was even
+  if(acclDeltaPct < MOVEMENT_DELTA_TRIGGER){
     Serial.println(F("Board has NOT moved."));
     return false;
   }
   else {
-    // Number was odd
     Serial.println(F("Broad has moved!"));
     return true;
   }
 
 }
 
-void getAccSensorMeasurements() {
+float getAccelerometerZAxisAcceleration() {
   sensors_event_t event; 
   accSensor.getEvent(&event);
-  
-  /* Display the results (acceleration is measured in m/s^2) */
 
-  Serial.print("Z-axis accelerated: "); Serial.print(event.acceleration.z); 
-
-  Serial.println();
-
+  return event.acceleration.z;
 }
 
 void printDetail(uint8_t type, int value){
