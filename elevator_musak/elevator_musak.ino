@@ -24,7 +24,7 @@ void setup()
 
   randomSeed(analogRead(0)); // Otherwise you see to get 7,9,3,8,0,2...
 
-  delay(2000); // Allow some time for things to settle, especially at first boot.
+  delay(1500); // Allow some time for things to settle, especially at first boot.
   
   Serial.println(F(""));
   Serial.println(F("DFPlayer Mini Start-up"));
