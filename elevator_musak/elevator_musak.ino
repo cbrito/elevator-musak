@@ -6,12 +6,22 @@
  
 #include "Arduino.h"
 #include "DFRobotDFPlayerMini.h"
+#include <Wire.h>
+#include <Adafruit_LIS3DH.h>
+#include <Adafruit_Sensor.h>
 
 // Teensy
 #define LED_PIN 11
 #define SERIAL_PORT Serial1
+// SCL Wire Port on 2.0 is 5
+// SDA Wire Port on 2.0 is 6
+// UART RX Port on 2.0 is 7
+// UART TX Port on 2.0 is 8
+
+#define ACC_SENSOR_I2C_ADDRESS 0x18
 
 DFRobotDFPlayerMini myDFPlayer;
+Adafruit_LIS3DH accSensor = Adafruit_LIS3DH(); // Sensor I2C Comm
 void printDetail(uint8_t type, int value);
 
 void setup()
@@ -22,9 +32,11 @@ void setup()
   SERIAL_PORT.begin(9600);
   Serial.begin(9600);
 
-  randomSeed(analogRead(0)); // Otherwise you see to get 7,9,3,8,0,2...
-
   delay(1500); // Allow some time for things to settle, especially at first boot.
+
+  setupAccSensor();
+
+  randomSeed(analogRead(0)); // Otherwise you see to get 7,9,3,8,0,2...
   
   Serial.println(F(""));
   Serial.println(F("DFPlayer Mini Start-up"));
@@ -40,6 +52,7 @@ void setup()
     while(true){
       // Flash the LED as an error indicator
       flashError();
+      // TO DO: Need to find someway to reset / recover from here after some delay.
     }
   }
   Serial.println(F("DFPlayer Mini Online"));
@@ -78,6 +91,16 @@ void flashError(){
       delay(250); 
 }
 
+void setupAccSensor(){
+  if (! accSensor.begin(ACC_SENSOR_I2C_ADDRESS)) {   
+    Serial.println("Couldnt start");
+    while (1);
+  }
+  Serial.println("LIS3DH sensor found!");
+  
+  accSensor.setRange(LIS3DH_RANGE_4_G);   // 2, 4, 8 or 16 G!
+}
+
 void playMusic(){
   // We should read the number of available tracks and do a rand to choose one to play.
   myDFPlayer.volume(30); // Always set volume
@@ -98,6 +121,8 @@ void playMusic(){
 bool checkIfBoardMoved() {
   Serial.println(F("Checking if the board has moved."));
 
+  getAccSensorMeasurements();
+
   int randNum = random(10); // Roll a die!
   Serial.print("Rolled a: ");
   Serial.println(randNum);
@@ -112,6 +137,18 @@ bool checkIfBoardMoved() {
     Serial.println(F("Broad has moved!"));
     return true;
   }
+
+}
+
+void getAccSensorMeasurements() {
+  sensors_event_t event; 
+  accSensor.getEvent(&event);
+  
+  /* Display the results (acceleration is measured in m/s^2) */
+
+  Serial.print("Z-axis accelerated: "); Serial.print(event.acceleration.z); 
+
+  Serial.println();
 
 }
 
